@@ -3,7 +3,7 @@ import path from 'node:path'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
-import { BriefSchema, type Brief } from '../config.js'
+import { BriefSchema, MODEL_OPTIONS, SettingsSchema, type Brief, type Settings } from '../config.js'
 import { normalizeScript, ScriptSchema } from '../script.js'
 import { applyAction, continueRun, newProject, runProject, type RunAction, type Service } from '../service.js'
 import { saveScriptEdit } from '../stages/script.js'
@@ -58,6 +58,25 @@ export function createApp(svc: Service, opts: { password: string; jobs?: number 
   app.use('/files/*', auth.middleware)
 
   // --- projects ---
+  /** Choices and defaults for the "new project" form. */
+  app.get('/api/options', (c) =>
+    c.json({
+      ...MODEL_OPTIONS,
+      defaults: {
+        language: svc.cfg.language,
+        audio: svc.cfg.audio,
+        subtitles: svc.cfg.subtitles,
+        approvals: svc.cfg.approvals,
+        llm: svc.cfg.models.llm.model,
+        image: svc.cfg.models.image.model,
+        videoDraft: svc.cfg.models.video.draft.model,
+        videoFinal: svc.cfg.models.video.final.model,
+        draftResolution: svc.cfg.models.video.draft.params.resolution,
+        finalResolution: svc.cfg.models.video.final.params.resolution,
+      },
+    }),
+  )
+
   app.get('/api/projects', async (c) => {
     const projects = await Project.list(svc.projectsDir)
     return c.json(
@@ -107,7 +126,17 @@ export function createApp(svc: Service, opts: { password: string; jobs?: number 
       audience: field('audience'),
       goal: field('goal'),
       persona: field('persona'),
-      personaImage: files('personaImage')[0] && (await save(files('personaImage')[0]!, 'persona')),
+      personaRefs: await saveAll(files('personaRefs'), 'persona'),
+      personaMode: field('personaMode'),
+      talkingPoints: field('talkingPoints'),
+      talkingMode: field('talkingMode'),
+      style: {
+        tone: field('tone'),
+        hookStyle: field('hookStyle'),
+        setting: field('setting'),
+        creatorGender: field('creatorGender'),
+        creatorAge: field('creatorAge'),
+      },
       format: field('format'),
       targetSeconds: field('targetSeconds') ? Number(field('targetSeconds')) : undefined,
       music: files('music')[0] && (await save(files('music')[0]!, 'music')),
@@ -124,7 +153,8 @@ export function createApp(svc: Service, opts: { password: string; jobs?: number 
     if (example && !exampleFile && !/^https?:\/\//.test(example)) throw new HttpError(400, 'Ссылка на пример должна начинаться с http')
     const variants = Math.min(MAX_VARIANTS, Math.max(1, Number(field('variants') ?? 1) || 1))
 
-    const project = await newProject(svc, { name, brief, example, variants }, id)
+    const settings = parseSettings(field)
+    const project = await newProject(svc, { name, brief, settings, example, variants }, id)
     enqueueProject(project)
     return c.json(projectSummary(project), 201)
   })
@@ -219,6 +249,31 @@ export async function startServer(svc: Service, opts: { port: number; password?:
   await recover()
   serve({ fetch: app.fetch, port: opts.port, hostname: process.env.HOST ?? '0.0.0.0' })
   console.log(`Панель: http://localhost:${opts.port}`)
+}
+
+/** Form fields → per-project settings. Models are limited to the offered list. */
+function parseSettings(field: (k: string) => string | undefined): Settings {
+  const pick = (k: string, allowed: string[]) => {
+    const v = field(k)
+    if (v !== undefined && !allowed.includes(v)) throw new HttpError(400, `${k}: недопустимое значение ${v}`)
+    return v
+  }
+  const bool = (k: string) => (field(k) === undefined ? undefined : field(k) === 'on' || field(k) === 'true')
+  const ids = (list: { id: string }[]) => list.map((o) => o.id)
+  return SettingsSchema.parse({
+    language: pick('language', ids(MODEL_OPTIONS.languages)),
+    audio: pick('audio', ['native', 'tts', 'none']),
+    subtitles: bool('subtitles'),
+    approvals: { script: bool('approveScript'), keyframes: bool('approveKeyframes') },
+    models: {
+      llm: pick('llm', ids(MODEL_OPTIONS.llm)),
+      image: pick('image', ids(MODEL_OPTIONS.image)),
+      videoDraft: pick('videoDraft', ids(MODEL_OPTIONS.video)),
+      videoFinal: pick('videoFinal', ids(MODEL_OPTIONS.video)),
+      draftResolution: pick('draftResolution', MODEL_OPTIONS.resolutions),
+      finalResolution: pick('finalResolution', MODEL_OPTIONS.resolutions),
+    },
+  })
 }
 
 class HttpError extends Error {

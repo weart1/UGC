@@ -170,17 +170,45 @@ function newProjectView() {
       </div>
     </div>
 
-    <div class="card"><h2>Аудитория и подача</h2>
+    <div class="card"><h2>Креатор</h2>
       <div class="form-grid">
+        <label>Референс креатора (фото)<input type="file" name="personaRefs" accept="image/*" multiple>
+          <span class="hint">1–3 фото одного человека. Без фото креатор генерируется по настройкам ниже</span></label>
+        <div class="field">Как использовать референс
+          <div class="radio-row" style="flex-direction:column;gap:6px">
+            <label><input type="radio" name="personaMode" value="exact" checked> Этот же человек во всех роликах</label>
+            <label><input type="radio" name="personaMode" value="inspired"> Похожий типаж, но другое лицо</label>
+          </div>
+        </div>
+        <label>Пол${select('creatorGender', GENDERS)}</label>
+        <label>Возраст${select('creatorAge', AGES)}</label>
+        <label>Где снимает${select('setting', SETTINGS)}</label>
+        <label>Внешность / образ (свободно)<input name="persona" placeholder="college student, hoodie, messy bun"></label>
+      </div>
+    </div>
+
+    <div class="card"><h2>О чём ролик</h2>
+      <div class="form-grid">
+        <label class="full">О чём рассказывает креатор<textarea name="talkingPoints" rows="4" placeholder="1. Раньше залипал в телефоне по 6 часов&#10;2. FocusFlow блокирует TikTok во время учёбы&#10;3. За месяц закрыл сессию без хвостов&#10;4. Первая неделя Pro бесплатно"></textarea></label>
+        <div class="field full">Как использовать текст
+          <div class="radio-row">
+            <label><input type="radio" name="talkingMode" value="points" checked> Тезисы — агент перескажет своими словами</label>
+            <label><input type="radio" name="talkingMode" value="verbatim"> Готовый текст — говорить дословно</label>
+          </div>
+        </div>
+        <label>Тон${select('tone', TONES)}</label>
+        <label>Хук${select('hookStyle', HOOKS)}</label>
         <label class="full">Аудитория*<textarea name="audience" required rows="2" placeholder="Women 25-40 in the US who..."></textarea></label>
         <label>Оффер<input name="offer" placeholder="7-day free trial"></label>
         <label>Целевое действие<input name="goal" placeholder="download the app"></label>
-        <label>Креатор (внешность)<input name="persona" placeholder="mom in her 30s, cozy kitchen"></label>
-        <label>Фото креатора (если своё)<input type="file" name="personaImage" accept="image/*"></label>
         <label>Формат (если нет примера)<input name="format" placeholder="honest review / 3 reasons / POV"></label>
         <label>Музыка<input type="file" name="music" accept="audio/*"></label>
-        <label class="full">Заметки<textarea name="notes" rows="2" placeholder="No medical claims. Casual tone."></textarea></label>
+        <label class="full">Заметки<textarea name="notes" rows="2" placeholder="No medical claims."></textarea></label>
       </div>
+    </div>
+
+    <div class="card"><h2>Настройки генерации</h2>
+      <div class="form-grid" id="settings"><p class="muted">Загрузка…</p></div>
     </div>
     <div class="progress" id="up" hidden><div></div></div>
     <p><button class="btn primary" id="submit">Создать и запустить</button></p>
@@ -209,8 +237,75 @@ function newProjectView() {
       toast('Сеть недоступна')
       btn.disabled = false
     }
-    xhr.send(new FormData(e.target))
+    const fd = new FormData(e.target)
+    // Unchecked boxes are not sent at all; the server must see an explicit "off".
+    e.target.querySelectorAll('input[type=checkbox]').forEach((c) => fd.set(c.name, c.checked ? 'true' : 'false'))
+    xhr.send(fd)
   }
+
+  api('GET', '/api/options').then((o) => {
+    const d = o.defaults
+    const opts = (list, cur) => list.map((x) => `<option value="${esc(x.id)}" ${x.id === cur ? 'selected' : ''}>${esc(x.label)}</option>`).join('')
+    const res = (cur) => o.resolutions.map((r) => `<option ${r === cur ? 'selected' : ''}>${r}</option>`).join('')
+    document.getElementById('settings').innerHTML = `
+      <label>Язык роликов<select name="language">${opts(o.languages, d.language)}</select></label>
+      <label>Звук<select name="audio">${opts(AUDIO, d.audio)}</select></label>
+      <label>Сценарии (LLM)<select name="llm">${opts(o.llm, d.llm)}</select></label>
+      <label>Кадры<select name="image">${opts(o.image, d.image)}</select></label>
+      <div class="field wide">Видео — черновик<div class="row"><select name="videoDraft" style="flex:1">${opts(o.video, d.videoDraft)}</select><select name="draftResolution" style="width:auto">${res(d.draftResolution)}</select></div></div>
+      <div class="field wide">Видео — финал<div class="row"><select name="videoFinal" style="flex:1">${opts(o.video, d.videoFinal)}</select><select name="finalResolution" style="width:auto">${res(d.finalResolution)}</select></div></div>
+      <div class="field full"><div class="row" style="gap:18px">
+        <label class="check"><input type="checkbox" name="subtitles" ${d.subtitles ? 'checked' : ''}> Субтитры</label>
+        <label class="check"><input type="checkbox" name="approveScript" ${d.approvals.script ? 'checked' : ''}> Ждать одобрения сценария</label>
+        <label class="check"><input type="checkbox" name="approveKeyframes" ${d.approvals.keyframes ? 'checked' : ''}> Ждать одобрения кадров</label>
+      </div></div>`
+  }).catch((err) => toast(err.message))
+}
+
+// Values go to the LLM as is (English); labels are for the panel.
+const AUTO = { id: '', label: 'Авто' }
+const GENDERS = [{ id: '', label: 'Любой' }, { id: 'female', label: 'Женщина' }, { id: 'male', label: 'Мужчина' }]
+const AGES = [{ id: '', label: 'Любой' }, { id: '18-24', label: '18–24' }, { id: '25-34', label: '25–34' }, { id: '35-44', label: '35–44' }, { id: '45-60', label: '45–60' }]
+const SETTINGS = [
+  AUTO,
+  { id: 'bedroom', label: 'Спальня' },
+  { id: 'living room', label: 'Гостиная' },
+  { id: 'kitchen', label: 'Кухня' },
+  { id: 'bathroom mirror', label: 'Ванная у зеркала' },
+  { id: 'car, parked', label: 'В машине' },
+  { id: 'street, walking', label: 'Улица на ходу' },
+  { id: 'office desk', label: 'Офис' },
+  { id: 'gym', label: 'Спортзал' },
+  { id: 'cafe', label: 'Кафе' },
+]
+const TONES = [
+  AUTO,
+  { id: 'casual and friendly, like talking to a friend', label: 'Дружелюбно, как подруге' },
+  { id: 'high energy, excited', label: 'Энергично, на эмоциях' },
+  { id: 'calm and trustworthy', label: 'Спокойно, вызывает доверие' },
+  { id: 'funny, self-ironic', label: 'С юмором, самоирония' },
+  { id: 'emotional personal story', label: 'Личная история' },
+  { id: 'confident expert explaining', label: 'Экспертно' },
+]
+const HOOKS = [
+  AUTO,
+  { id: 'a provocative question to the viewer', label: 'Вопрос зрителю' },
+  { id: 'a bold, surprising statement', label: 'Шокирующее заявление' },
+  { id: 'POV format', label: 'POV' },
+  { id: 'show the result first, then explain', label: 'Сразу результат' },
+  { id: "call out the viewer's pain", label: 'Боль зрителя' },
+  { id: '"if you are X, stop scrolling" callout', label: '«Если ты X — стоп»' },
+  { id: 'a secret nobody talks about', label: '«Об этом никто не говорит»' },
+  { id: 'reaction to the product, surprised', label: 'Реакция/удивление' },
+]
+const AUDIO = [
+  { id: 'native', label: 'Креатор говорит в кадре (липсинк)' },
+  { id: 'tts', label: 'Закадровый голос' },
+  { id: 'none', label: 'Без голоса, только субтитры' },
+]
+
+function select(name, list) {
+  return `<select name="${name}">${list.map((o) => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join('')}</select>`
 }
 
 // --- project ---
@@ -234,6 +329,7 @@ async function projectView(pid) {
       ${a ? `<div class="card" style="margin-top:16px"><h2>Разбор примера</h2>
         <p><b>Формат:</b> ${esc(a.format)}<br><b>Хук:</b> ${esc(a.hook)}<br><b>Тон:</b> ${esc(a.tone)}<br><b>Темп:</b> ${esc(a.pacing)}<br><b>CTA:</b> ${esc(a.cta)}</p>
         <ol class="beats">${a.beats.map((b) => `<li><b>${esc(b.purpose)}</b> (${b.seconds}с, ${esc(b.shot)}) — ${esc(b.description)}</li>`).join('')}</ol></div>` : ''}
+      ${projectSettingsCard(p)}
       ${p.log.length ? `<div class="card"><h2>Журнал подготовки</h2><div class="log">${esc(p.log.join('\n'))}</div></div>` : ''}`
 
     app.querySelector('[data-retry]')?.addEventListener('click', async () => {
@@ -258,6 +354,23 @@ async function projectView(pid) {
   }
   await render()
   poll(render)
+}
+
+function projectSettingsCard(p) {
+  const b = p.brief
+  const st = b.style ?? {}
+  const m = p.settings?.models ?? {}
+  const rows = [
+    ['Креатор', b.personaRefs?.length ? `по фото (${b.personaRefs.length}), ${b.personaMode === 'exact' ? 'тот же человек' : 'похожий типаж'}` : 'генерируется'],
+    ['Пол / возраст / место', [st.creatorGender, st.creatorAge, st.setting].filter(Boolean).join(', ') || 'авто'],
+    ['Тон / хук', [st.tone, st.hookStyle].filter(Boolean).join(' · ') || 'авто'],
+    ['Язык / звук', [p.settings?.language, p.settings?.audio].filter(Boolean).join(' / ') || 'по конфигу'],
+    ['Модели', [m.llm, m.image, m.videoDraft && `${m.videoDraft} ${m.draftResolution ?? ''}`, m.videoFinal && `финал: ${m.videoFinal} ${m.finalResolution ?? ''}`].filter(Boolean).join(' · ') || 'по конфигу'],
+  ]
+  return `<div class="card"><h2>Бриф и настройки</h2>
+    ${b.talkingPoints ? `<p><b>${b.talkingMode === 'verbatim' ? 'Текст (дословно)' : 'О чём рассказывает'}:</b><br>${esc(b.talkingPoints).replace(/\n/g, '<br>')}</p>` : ''}
+    <p class="small">${rows.map(([k, v]) => `<b>${k}:</b> ${esc(v)}`).join('<br>')}</p>
+    ${p.personaDescription ? `<p class="small muted">Референс креатора: ${esc(p.personaDescription)}</p>` : ''}</div>`
 }
 
 function variantCard(pid, r) {
@@ -443,7 +556,7 @@ async function runView(pid, rid) {
       </div></div>
       <div class="grid">
         <div class="variant">${personaSrc ? `<img class="media" src="${personaSrc}?v=${encodeURIComponent(s.refs.persona ?? '')}">` : '<div class="placeholder">персонаж</div>'}
-          <div class="spread small"><b>Персонаж</b>${!s.busy && !s.brief.personaImage ? '<button class="btn small" data-redo-persona>Другой</button>' : ''}</div></div>
+          <div class="spread small"><b>Персонаж</b>${!s.busy ? `<button class="btn small" data-redo-persona>${s.brief.personaRefs.length ? 'Заново' : 'Другой'}</button>` : ''}</div></div>
         ${s.scenes
           .map(
             (sc, i) => `<div class="variant">

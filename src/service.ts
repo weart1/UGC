@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { Brief, Config } from './config.js'
+import { applySettings, type Brief, type Config, type Settings } from './config.js'
 import { createFakeGenerator } from './gen/fake.js'
 import { createRunwareGenerator } from './gen/runware.js'
 import type { Generator } from './gen/types.js'
@@ -14,14 +14,14 @@ import { Project, type Run, type RunStatus, type Stage } from './state.js'
 export interface Service {
   cfg: Config
   projectsDir: string
-  newGenerator(): Promise<Generator>
+  newGenerator(cfg: Config): Promise<Generator>
 }
 
 export function createService(cfg: Config, dataDir: string, dryRun: boolean): Service {
   return {
     cfg,
     projectsDir: path.resolve(dataDir, 'projects'),
-    newGenerator: () => (dryRun ? createFakeGenerator(cfg) : createRunwareGenerator(cfg)),
+    newGenerator: (jobCfg) => (dryRun ? createFakeGenerator(jobCfg) : createRunwareGenerator(jobCfg)),
   }
 }
 
@@ -29,7 +29,7 @@ export type Log = (msg: string) => void
 
 export function newProject(
   svc: Service,
-  init: { name: string; brief: Brief; example?: string; variants: number },
+  init: { name: string; brief: Brief; settings?: Settings; example?: string; variants: number },
   id?: string,
 ): Promise<Project> {
   return Project.create(
@@ -37,6 +37,7 @@ export function newProject(
     {
       name: init.name,
       brief: init.brief,
+      settings: init.settings ?? { approvals: {}, models: {} },
       example: init.example ? { source: init.example } : undefined,
       variants: init.variants,
     },
@@ -46,13 +47,15 @@ export function newProject(
 
 /** Analyses the example and writes every variant's script; then pushes each run as far as its gates allow. */
 export async function runProject(svc: Service, project: Project, log: Log): Promise<void> {
-  const runs = await prepareProject({ project, gen: await svc.newGenerator(), cfg: svc.cfg, log })
+  const cfg = applySettings(svc.cfg, project.state.settings)
+  const runs = await prepareProject({ project, gen: await svc.newGenerator(cfg), cfg, log })
   // Runs waiting at a gate stay there; only those stopped by `until` go on.
   for (const run of runs) if (run.state.status === 'paused') await continueRun(svc, run, log)
 }
 
 export async function continueRun(svc: Service, run: Run, log: Log): Promise<RunStatus> {
-  return runPipeline({ run, gen: await svc.newGenerator(), cfg: svc.cfg, log })
+  const cfg = applySettings(svc.cfg, run.state.settings)
+  return runPipeline({ run, gen: await svc.newGenerator(cfg), cfg, log })
 }
 
 export type RunAction =

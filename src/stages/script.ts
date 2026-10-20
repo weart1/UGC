@@ -31,6 +31,7 @@ export async function scriptStage({ run, gen, cfg, log }: Ctx): Promise<void> {
       analysis: run.state.analysis,
       recordings: run.state.recordings,
       variant: run.state.variant,
+      personaDescription: run.state.personaDescription,
       language: cfg.language,
       minDuration,
       maxDuration,

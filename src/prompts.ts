@@ -54,24 +54,51 @@ Available screen recordings:
 ${recs}`
 }
 
+function creatorSection(brief: Brief, personaDescription?: string): string {
+  const st = brief.style
+  const wanted = [
+    st.creatorGender && `gender: ${st.creatorGender}`,
+    st.creatorAge && `age: ${st.creatorAge}`,
+    st.setting && `filming location: ${st.setting}`,
+    brief.persona,
+  ].filter(Boolean)
+  if (personaDescription && brief.personaRefs.length) {
+    return brief.personaMode === 'exact'
+      ? `CREATOR: fixed — the person from the reference photos (${personaDescription}). "persona.look" must describe THIS person's appearance, plus outfit and setting${wanted.length ? ` (${wanted.join('; ')})` : ''}.`
+      : `CREATOR: a different person of a similar type and style to the reference photos (${personaDescription})${wanted.length ? `; ${wanted.join('; ')}` : ''}.`
+  }
+  return `CREATOR: ${wanted.length ? wanted.join('; ') : 'pick a creator who matches the audience'}`
+}
+
+function messageSection(brief: Brief, lang: string): string {
+  if (!brief.talkingPoints) return ''
+  return brief.talkingMode === 'verbatim'
+    ? `WHAT THE CREATOR SAYS — use this text VERBATIM as the spoken lines (translate to ${lang} only if it is in another language), only split it into scenes; do not add, drop or reword sentences:
+${brief.talkingPoints}`
+    : `WHAT THE CREATOR TALKS ABOUT — cover every point, in this order where it makes sense, in the creator's own casual words:
+${brief.talkingPoints}`
+}
+
 export function scriptPrompt(opts: {
   brief: Brief
   analysis?: Analysis
   recordings: Recording[]
   variant: RunState['variant']
+  personaDescription?: string
   language: string
   minDuration: number
   maxDuration: number
   speaking: boolean
 }): string {
   const { brief, analysis, recordings, variant, language, minDuration, maxDuration, speaking } = opts
+  const fixedCreator = brief.personaRefs.length > 0 && brief.personaMode === 'exact'
   const lang = languageName(language)
   const structure = analysis
     ? `Follow the structure of this reference ad closely (same beats, hook technique, pacing and tone), adapted to the product:\n${JSON.stringify(analysis, null, 2)}`
     : `Format: ${brief.format ?? 'honest first-person review: hook → problem → how I use it → result → offer → call to action'}`
   const variation =
     variant.total > 1
-      ? `\nThis is variant ${variant.index + 1} of ${variant.total} for an A/B test. Keep the structure, but use a clearly different hook angle and a different creator (age, gender, style, setting) from the earlier variants:\n${variant.avoid.map((a) => `- ${a}`).join('\n') || '- (this is the first one)'}\n`
+      ? `\nThis is variant ${variant.index + 1} of ${variant.total} for an A/B test. Keep the structure, but use a clearly different hook angle${fixedCreator ? ' (the creator stays the same person; you may change outfit and location)' : ' and a different creator (age, gender, style, setting) within the CREATOR constraints'} from the earlier variants:\n${variant.avoid.map((a) => `- ${a}`).join('\n') || '- (this is the first one)'}\n`
       : ''
 
   return `You write scripts for UGC video ads that look like a real person filmed them on a phone.
@@ -83,8 +110,11 @@ ${brief.product.price ? `Price: ${brief.product.price}` : ''}
 ${brief.offer ? `Offer: ${brief.offer}` : ''}
 AUDIENCE: ${brief.audience}
 GOAL: ${brief.goal}
-CREATOR: ${brief.persona ?? 'pick a creator who matches the audience'}
+${creatorSection(brief, opts.personaDescription)}
+${brief.style.tone ? `TONE: ${brief.style.tone}` : ''}
+${brief.style.hookStyle ? `HOOK STYLE: ${brief.style.hookStyle}` : ''}
 ${brief.notes ? `NOTES: ${brief.notes}` : ''}
+${messageSection(brief, lang)}
 
 ${structure}
 ${variation}
@@ -110,8 +140,14 @@ Return ONLY a JSON object:
 }`
 }
 
-export function personaPrompt(script: Script): string {
-  return `Portrait photo of a real person filming a selfie video: ${script.persona.look}. Looking into the camera, relaxed natural expression, upper body in frame. ${UGC_LOOK}`
+export function personaPrompt(script: Script, refs?: 'exact' | 'inspired'): string {
+  const ref =
+    refs === 'exact'
+      ? 'The same person as in the reference photos: keep the face, skin tone, hair and body identical. '
+      : refs === 'inspired'
+        ? 'A different person of a similar type and style to the reference photos — not the same face. '
+        : ''
+  return `${ref}Portrait photo of a real person filming a selfie video: ${script.persona.look}. Looking into the camera, relaxed natural expression, upper body in frame. ${UGC_LOOK}`
 }
 
 export function keyframePrompt(script: Script, scene: Scene, product: { type: 'physical' | 'app'; hasRefs: boolean }): string {

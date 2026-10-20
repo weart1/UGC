@@ -13,13 +13,16 @@ export async function personaStage({ run, gen, log }: Ctx): Promise<void> {
   }
   if (state.refs.persona) return
 
-  if (state.brief.personaImage) {
-    state.persona = state.brief.personaImage
-  } else {
-    log('Генерирую персонажа...')
-    const image = await gen.image({ prompt: personaPrompt(script), refs: [] })
-    state.persona = await run.writeMedia('persona.png', image)
+  // Reference photos are uploaded once; "another persona" regenerates from the same ones.
+  const { personaRefs, personaMode } = state.brief
+  if (personaRefs.length && !state.refs.personaInputs) {
+    state.refs.personaInputs = await Promise.all(personaRefs.map((f) => gen.upload(f)))
+    await run.save()
   }
+  const inputs = state.refs.personaInputs ?? []
+  log(inputs.length ? 'Генерирую персонажа по референсу...' : 'Генерирую персонажа...')
+  const image = await gen.image({ prompt: personaPrompt(script, inputs.length ? personaMode : undefined), refs: inputs })
+  state.persona = await run.writeMedia('persona.png', image)
   state.refs.persona = await gen.upload(run.file(state.persona))
   await run.save()
 }

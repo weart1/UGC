@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import type { Brief, Quality } from './config.js'
+import type { Brief, Quality, Settings } from './config.js'
 import type { Analysis, Script } from './script.js'
 
 export interface SceneState {
@@ -31,13 +31,16 @@ export interface RunState {
   status: RunStatus
   error?: string
   brief: Brief
+  settings: Settings
   analysis?: Analysis
   recordings: Recording[]
+  /** What the creator reference photos show, for the script writer. */
+  personaDescription?: string
   variant: { index: number; total: number; avoid: string[] }
   quality: Quality
   approvals: { script?: boolean; keyframes?: boolean }
   script?: Script
-  refs: { product?: string[]; persona?: string }
+  refs: { product?: string[]; personaInputs?: string[]; persona?: string }
   persona?: string
   scenes: SceneState[]
   voice?: string
@@ -146,10 +149,12 @@ export interface ProjectState {
   status: ProjectStatus
   error?: string
   brief: Brief
+  settings: Settings
   example?: { source: string; file?: string; transcript?: string }
   variants: number
   analysis?: Analysis
   recordings?: Recording[]
+  personaDescription?: string
   runs: string[]
 }
 
@@ -159,7 +164,7 @@ export class Project {
     public state: ProjectState,
   ) {}
 
-  static async create(projectsDir: string, init: Pick<ProjectState, 'name' | 'brief' | 'example' | 'variants'>, id = newId(init.name)): Promise<Project> {
+  static async create(projectsDir: string, init: Pick<ProjectState, 'name' | 'brief' | 'settings' | 'example' | 'variants'>, id = newId(init.name)): Promise<Project> {
     const dir = path.resolve(projectsDir, id)
     await mkdir(path.join(dir, 'runs'), { recursive: true })
     const project = new Project(dir, { ...init, id, createdAt: new Date().toISOString(), status: 'preparing', runs: [] })

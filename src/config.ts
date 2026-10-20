@@ -71,8 +71,25 @@ export const BriefSchema = z.object({
   goal: z.string().default('download the app'),
   /** Desired look of the creator, free text. */
   persona: z.string().optional(),
-  /** Existing creator photo to reuse instead of generating one. */
-  personaImage: z.string().optional(),
+  /** Photos of the creator: the same person in every video (`exact`) or just a similar look (`inspired`). */
+  personaRefs: z.array(z.string()).default([]),
+  personaMode: z.enum(['exact', 'inspired']).default('exact'),
+  /**
+   * What the creator talks about. `points`: key messages the LLM turns into
+   * natural lines; `verbatim`: the exact text, only split into scenes.
+   */
+  talkingPoints: z.string().optional(),
+  talkingMode: z.enum(['points', 'verbatim']).default('points'),
+  /** Picked in the panel from fixed lists; values are English, ready for the prompt. Empty = let the LLM decide. */
+  style: z
+    .object({
+      tone: z.string().optional(),
+      hookStyle: z.string().optional(),
+      setting: z.string().optional(),
+      creatorGender: z.string().optional(),
+      creatorAge: z.string().optional(),
+    })
+    .default({}),
   /** Format to follow when no example is given: unboxing, "3 reasons", before/after... */
   format: z.string().optional(),
   targetSeconds: z.number().int().min(5).max(90).default(25),
@@ -81,6 +98,88 @@ export const BriefSchema = z.object({
   notes: z.string().optional(),
 })
 export type Brief = z.infer<typeof BriefSchema>
+
+/**
+ * Per-project overrides of the config, picked in the "new project" form.
+ * Model ids replace the config's; resolutions go into the video params.
+ */
+export const SettingsSchema = z
+  .object({
+    language: z.string().optional(),
+    audio: z.enum(['native', 'tts', 'none']).optional(),
+    subtitles: z.boolean().optional(),
+    approvals: z.object({ script: z.boolean().optional(), keyframes: z.boolean().optional() }).default({}),
+    models: z
+      .object({
+        llm: z.string().optional(),
+        image: z.string().optional(),
+        videoDraft: z.string().optional(),
+        videoFinal: z.string().optional(),
+        draftResolution: z.string().optional(),
+        finalResolution: z.string().optional(),
+      })
+      .default({}),
+  })
+  .default({})
+export type Settings = z.infer<typeof SettingsSchema>
+
+export function applySettings(cfg: Config, s: Settings): Config {
+  const m = s.models
+  const video = (slot: Config['models']['video']['draft'], model?: string, resolution?: string) => ({
+    model: model ?? slot.model,
+    params: resolution ? { ...slot.params, resolution } : slot.params,
+  })
+  return {
+    ...cfg,
+    language: s.language ?? cfg.language,
+    audio: s.audio ?? cfg.audio,
+    subtitles: s.subtitles ?? cfg.subtitles,
+    approvals: {
+      script: s.approvals.script ?? cfg.approvals.script,
+      keyframes: s.approvals.keyframes ?? cfg.approvals.keyframes,
+    },
+    models: {
+      ...cfg.models,
+      llm: { ...cfg.models.llm, model: m.llm ?? cfg.models.llm.model },
+      image: { ...cfg.models.image, model: m.image ?? cfg.models.image.model },
+      video: {
+        ...cfg.models.video,
+        draft: video(cfg.models.video.draft, m.videoDraft, m.draftResolution),
+        final: video(cfg.models.video.final, m.videoFinal, m.finalResolution),
+      },
+    },
+  }
+}
+
+/** Models offered in the panel. Ids come from the Runware SDK registry. */
+export const MODEL_OPTIONS = {
+  llm: [
+    { id: 'google:gemini@3.5-flash', label: 'Gemini 3.5 Flash — быстро и дёшево' },
+    { id: 'google:gemini@3.1-pro', label: 'Gemini 3.1 Pro' },
+    { id: 'anthropic:claude@sonnet-4.6', label: 'Claude Sonnet 4.6' },
+    { id: 'openai:gpt@5.4', label: 'GPT-5.4' },
+  ],
+  image: [
+    { id: 'google:4@2', label: 'Nano Banana Pro — лучшее качество' },
+    { id: 'google:nano-banana@2.1', label: 'Nano Banana 2.1' },
+    { id: 'google:4@3', label: 'Nano Banana 2' },
+    { id: 'google:nano-banana@2-lite', label: 'Nano Banana 2 Lite — дешевле' },
+  ],
+  video: [
+    { id: 'bytedance:seedance@2.5', label: 'Seedance 2.5 — лучшее качество' },
+    { id: 'bytedance:seedance@2.0', label: 'Seedance 2.0' },
+    { id: 'bytedance:seedance@2.0-fast', label: 'Seedance 2.0 Fast — быстро' },
+    { id: 'bytedance:seedance@2.0-mini', label: 'Seedance 2.0 Mini — дешевле всего' },
+  ],
+  resolutions: ['480p', '720p', '1080p'],
+  languages: [
+    { id: 'en', label: 'Английский' },
+    { id: 'ru', label: 'Русский' },
+    { id: 'es', label: 'Испанский' },
+    { id: 'pt', label: 'Португальский' },
+    { id: 'de', label: 'Немецкий' },
+  ],
+}
 
 export async function loadConfig(file: string): Promise<Config> {
   return ConfigSchema.parse(JSON.parse(await readFile(file, 'utf8')))
@@ -93,7 +192,7 @@ export function resolveBriefPaths(brief: Brief, dir: string): Brief {
     ...brief,
     product: { ...brief.product, images: brief.product.images.map(abs) },
     screenRecordings: brief.screenRecordings.map(abs),
-    personaImage: brief.personaImage && abs(brief.personaImage),
+    personaRefs: brief.personaRefs.map(abs),
     music: brief.music && abs(brief.music),
   }
 }

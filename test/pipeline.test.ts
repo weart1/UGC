@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadConfig, type Brief } from '../src/config.js'
+import { BriefSchema, loadConfig } from '../src/config.js'
 import { ffmpeg, probeDuration } from '../src/ffmpeg.js'
 import { createApp } from '../src/server/app.js'
 import { applyAction, continueRun, createService, newProject, runProject } from '../src/service.js'
@@ -26,19 +26,37 @@ describe('project flow (offline, fake generator)', () => {
     const cfg = await loadConfig(path.join(root, 'ugc.config.json'))
     const svc = createService(cfg, await mkdtemp(path.join(tmpdir(), 'ugc-data-')), true)
     const fx = await fixtures()
-    const brief: Brief = {
+    const brief = BriefSchema.parse({
       product: { name: 'FocusFlow', description: 'habit app', type: 'app', images: [fx.shot] },
       screenRecordings: [fx.screen],
+      personaRefs: [fx.shot],
+      talkingPoints: 'blocks TikTok while studying',
       audience: 'students',
-      goal: 'download',
       targetSeconds: 20,
+    })
+    const settings = { approvals: {}, models: { videoDraft: 'bytedance:seedance@2.0-mini', draftResolution: '480p' } }
+    const project = await newProject(svc, { name: 'FocusFlow', brief, settings, example: fx.example, variants: 2 })
+
+    // Record what reaches the generator: the project's models and the persona references.
+    const seen = { draftModels: new Set<string>(), personaRefs: [] as string[][] }
+    const make = svc.newGenerator
+    svc.newGenerator = async (cfg) => {
+      seen.draftModels.add(`${cfg.models.video.draft.model} ${String(cfg.models.video.draft.params.resolution)}`)
+      const gen = await make(cfg)
+      return {
+        ...gen,
+        image: (req) => {
+          if (req.prompt.includes('reference photos')) seen.personaRefs.push(req.refs)
+          return gen.image(req)
+        },
+      }
     }
-    const project = await newProject(svc, { name: 'FocusFlow', brief, example: fx.example, variants: 2 })
     await runProject(svc, project, silent)
 
     expect(project.state.status).toBe('ready')
     expect(project.state.analysis?.format).toBeTruthy()
     expect(project.state.recordings).toHaveLength(1)
+    expect(project.state.personaDescription).toBeTruthy()
     const [run1, run2] = await Promise.all(project.state.runs.map((id) => project.openRun(id)))
     expect(run1!.state.status).toBe('awaiting_script')
     // The second variant is told what the first one used.
@@ -48,6 +66,8 @@ describe('project flow (offline, fake generator)', () => {
     await applyAction(run, { type: 'approve', what: 'script' })
     expect(await continueRun(svc, run, silent)).toBe('awaiting_keyframes')
     expect(run.state.scenes.every((s) => s.keyframe && !s.clip)).toBe(true)
+    expect([...seen.draftModels]).toEqual(['bytedance:seedance@2.0-mini 480p'])
+    expect(seen.personaRefs).toEqual([[fx.shot]])
 
     await applyAction(run, { type: 'approve', what: 'keyframes' })
     expect(await continueRun(svc, run, silent)).toBe('done')

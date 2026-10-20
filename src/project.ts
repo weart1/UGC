@@ -34,6 +34,12 @@ export async function prepareProject(ctx: ProjectCtx): Promise<Run[]> {
     await project.save()
     if (!st.recordings) st.recordings = await describeRecordings(ctx)
     await project.save()
+    if (st.brief.personaRefs.length && st.personaDescription === undefined) {
+      log('Описываю референс креатора...')
+      const captions = await mapLimit(st.brief.personaRefs, ctx.cfg.concurrency, (f) => ctx.gen.caption(f))
+      st.personaDescription = captions.join(' / ')
+      await project.save()
+    }
 
     const runs: Run[] = []
     for (let i = 0; i < st.variants; i++) {
@@ -46,8 +52,10 @@ export async function prepareProject(ctx: ProjectCtx): Promise<Run[]> {
           id,
           projectId: st.id,
           brief: st.brief,
+          settings: st.settings,
           analysis: st.analysis,
           recordings: st.recordings,
+          personaDescription: st.personaDescription,
           variant: { index: i, total: st.variants, avoid: avoidList(runs) },
         })
         st.runs.push(id)

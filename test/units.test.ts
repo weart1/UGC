@@ -2,7 +2,8 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import type { Brief } from '../src/config.js'
+import { applySettings, BriefSchema, ConfigSchema } from '../src/config.js'
+import { scriptPrompt } from '../src/prompts.js'
 import { deepMerge } from '../src/gen/runware.js'
 import type { Generator } from '../src/gen/types.js'
 import { askJson, extractJson, normalizeScript, ScriptSchema, type Script } from '../src/script.js'
@@ -27,13 +28,7 @@ const script = (): Script => ({
   persona: { look: 'woman', voice: 'warm' },
   scenes: [scene(), scene({ purpose: 'demo' }), scene({ purpose: 'cta' })],
 })
-const brief: Brief = {
-  product: { name: 'p', description: 'd', type: 'app', images: [] },
-  screenRecordings: [],
-  audience: 'a',
-  goal: 'g',
-  targetSeconds: 20,
-}
+const brief = BriefSchema.parse({ product: { name: 'p', description: 'd', type: 'app' }, audience: 'a', targetSeconds: 20 })
 
 describe('extractJson', () => {
   it('reads fenced and prose-wrapped JSON', () => {
@@ -123,6 +118,7 @@ describe('applyScriptEdit', () => {
       id: '1',
       projectId: 'p',
       brief,
+      settings: { approvals: {}, models: {} },
       recordings: [],
       variant: { index: 0, total: 1, avoid: [] },
     })
@@ -199,5 +195,52 @@ describe('mapLimit', () => {
     })
     expect(out).toEqual([2, 4, 6, 8, 10])
     expect(peak).toBe(2)
+  })
+})
+
+describe('applySettings', () => {
+  it('overrides models, resolution and gates, keeps the rest', () => {
+    const slot = (model: string, params = {}) => ({ model, params })
+    const cfg = ConfigSchema.parse({
+      models: {
+        llm: slot('llm-a'),
+        caption: slot('cap'),
+        image: { ...slot('img-a'), width: 768, height: 1376 },
+        video: { minDuration: 4, maxDuration: 10, draft: slot('v-draft', { resolution: '720p', x: 1 }), final: slot('v-final') },
+        tts: slot('tts'),
+      },
+    })
+    const out = applySettings(cfg, {
+      language: 'ru',
+      approvals: { keyframes: false },
+      models: { image: 'img-b', videoDraft: 'v-cheap', draftResolution: '480p' },
+    })
+    expect(out.language).toBe('ru')
+    expect(out.approvals).toEqual({ script: true, keyframes: false })
+    expect(out.models.image).toMatchObject({ model: 'img-b', width: 768 })
+    expect(out.models.video.draft).toEqual({ model: 'v-cheap', params: { resolution: '480p', x: 1 } })
+    expect(out.models.video.final.model).toBe('v-final')
+    expect(out.models.llm.model).toBe('llm-a')
+  })
+})
+
+describe('scriptPrompt', () => {
+  const base = { analysis: undefined, recordings: [], variant: { index: 1, total: 3, avoid: ['hook: "x"'] }, language: 'en', minDuration: 4, maxDuration: 10, speaking: true }
+
+  it('pins the creator from reference photos and asks only for a new hook', () => {
+    const b = BriefSchema.parse({ ...brief, personaRefs: ['/a.jpg'], personaMode: 'exact', style: { tone: 'calm and trustworthy', hookStyle: 'POV format' } })
+    const p = scriptPrompt({ ...base, brief: b, personaDescription: 'blonde woman, 30s' })
+    expect(p).toContain('the person from the reference photos (blonde woman, 30s)')
+    expect(p).toContain('the creator stays the same person')
+    expect(p).toContain('TONE: calm and trustworthy')
+    expect(p).toContain('HOOK STYLE: POV format')
+  })
+
+  it('keeps verbatim text and passes picked creator traits', () => {
+    const b = BriefSchema.parse({ ...brief, talkingPoints: 'Say exactly this.', talkingMode: 'verbatim', style: { creatorGender: 'male', setting: 'gym' } })
+    const p = scriptPrompt({ ...base, brief: b })
+    expect(p).toContain('VERBATIM')
+    expect(p).toContain('Say exactly this.')
+    expect(p).toContain('gender: male; filming location: gym')
   })
 })
