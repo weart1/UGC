@@ -302,6 +302,7 @@ function runSummary(r: RunState) {
     persona: r.script?.persona.look,
     thumb: thumb && !path.isAbsolute(thumb) ? `runs/${r.id}/${thumb}` : undefined,
     final: r.final ? `runs/${r.id}/${r.final}` : undefined,
+    hasClips: r.scenes.some((s) => s.clip),
     spentUsd: r.spentUsd,
   }
 }
