@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ugc:ci .
+      - name: Smoke test
+        run: |
+          docker run -d --name ugc -p 3000:3000 -e PANEL_PASSWORD=ci -e DRY_RUN=1 ugc:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3000/healthz && break; sleep 2; done
+          curl -fsS http://127.0.0.1:3000/healthz
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/projects)" = 401
+          curl -fsS http://127.0.0.1:3000/ | grep -q 'UGC Studio'
+          docker exec ugc ffmpeg -version | head -1
+          docker exec ugc yt-dlp --version
+          docker exec ugc python3 -c "import faster_whisper"
+      - if: failure()
+        run: docker logs ugc || true

@@ -43,6 +43,9 @@ export function createApp(svc: Service, opts: { password: string; jobs?: number 
     return c.json({ error: err.message }, status)
   })
 
+  // Unauthenticated liveness probe for Docker / uptime monitors.
+  app.get('/healthz', (c) => c.json({ ok: true }))
+
   // --- auth ---
   app.post('/api/login', async (c) => {
     const { password } = await c.req.json<{ password?: string }>()

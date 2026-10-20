@@ -2,3 +2,5 @@ node_modules/
 runs/
 .env
 *.log
+data/
+backups/

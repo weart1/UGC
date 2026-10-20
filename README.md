@@ -16,19 +16,40 @@
 
 ## Запуск на сервере
 
-Нужен VPS с Docker (2 ядра, 4 ГБ ОЗУ хватит).
+**Что нужно:**
+- VPS на Ubuntu 22.04/24.04 или Debian 12: 2 ядра, 4 ГБ ОЗУ, 40 ГБ диска. Подойдёт Hetzner CX22, Timeweb, DigitalOcean и т.п.
+- Домен.
+- Ключ [Runware](https://my.runware.ai).
+
+**1. DNS.** У регистратора домена добавь A-запись, например `ugc.example.com` → IP сервера. Сделай это заранее: запись обновляется от пары минут до часа.
+
+**2. Установка.** Зайди на сервер по SSH и выполни:
 
 ```bash
-git clone https://github.com/weart1/UGC && cd UGC
-cp .env.example .env     # впиши RUNWARE_API_KEY и PANEL_PASSWORD
-docker compose up -d --build
+curl -fsSL https://raw.githubusercontent.com/weart1/UGC/claude/amazing-rubin-x625su/deploy/install.sh | sudo BRANCH=claude/amazing-rubin-x625su bash
 ```
 
-Панель слушает только `127.0.0.1:3000`. Есть два варианта доступа:
-- **HTTPS с доменом.** Направь A-запись домена на сервер, впиши `DOMAIN=ugc.example.com` в `.env` и запусти `docker compose --profile https up -d`. Сертификат Caddy получит сам.
-- **SSH-туннель.** `ssh -L 3000:localhost:3000 user@server`, потом открой http://localhost:3000.
+Скрипт поставит Docker и скачает проект в `/opt/ugc`. Потом спросит домен, ключ Runware и пароль (если пароль не ввести, сгенерирует сам). Дальше соберёт образ и поднимет панель с HTTPS-сертификатом и автозапуском после перезагрузки сервера. В конце выведет адрес панели и пароль.
 
-Все данные (проекты, загрузки, ролики) лежат в `./data`. Для бэкапа достаточно копировать эту папку.
+**Обслуживание:**
+
+| Что | Команда |
+|---|---|
+| Обновить до свежей версии | `sudo bash /opt/ugc/deploy/update.sh` |
+| Логи | `cd /opt/ugc && docker compose logs -f app` |
+| Перезапуск | `cd /opt/ugc && docker compose --profile https restart` |
+| Сменить ключ или пароль | поправь `/opt/ugc/.env`, затем перезапусти |
+| Бэкап | `sudo bash /opt/ugc/deploy/backup.sh`, ежедневно через cron: `0 4 * * * /opt/ugc/deploy/backup.sh` |
+
+Все данные (проекты, загрузки, ролики) лежат в `/opt/ugc/data`. Генерации, прерванные перезапуском, продолжатся сами.
+
+**Без скрипта (вручную):**
+
+```bash
+git clone https://github.com/weart1/UGC /opt/ugc && cd /opt/ugc
+cp .env.example .env   # DOMAIN, RUNWARE_API_KEY, PANEL_PASSWORD
+docker compose --profile https up -d --build
+```
 
 ## Работа в панели
 

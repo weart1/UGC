@@ -17,4 +17,6 @@ ENV DATA_DIR=/data \
     HF_HOME=/data/.models
 VOLUME /data
 EXPOSE 3000
-CMD ["pnpm", "ugc", "serve"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+  CMD node -e "fetch('http://127.0.0.1:3000/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+CMD ["node_modules/.bin/tsx", "src/cli.ts", "serve"]
