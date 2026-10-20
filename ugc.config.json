@@ -1,9 +1,10 @@
 {
-  "language": "ru",
-  "audio": "tts",
+  "language": "en",
+  "audio": "native",
   "subtitles": true,
   "concurrency": 2,
   "validateParams": true,
+  "approvals": { "script": true, "keyframes": true },
   "models": {
     "llm": { "model": "google:gemini@3.5-flash", "params": {} },
     "caption": { "model": "runware:152@2", "params": {} },
@@ -14,12 +15,16 @@
       "params": {}
     },
     "video": {
-      "model": "bytedance:seedance@2.5",
-      "width": 704,
-      "height": 1248,
       "minDuration": 4,
       "maxDuration": 10,
-      "params": {}
+      "draft": {
+        "model": "bytedance:seedance@2.0-fast",
+        "params": { "resolution": "720p" }
+      },
+      "final": {
+        "model": "bytedance:seedance@2.5",
+        "params": { "resolution": "1080p" }
+      }
     },
     "tts": { "model": "alibaba:qwen@3-tts-1.7b-voicedesign", "params": {} }
   },

@@ -35,8 +35,20 @@ export const SceneSchema = z.object({
   line: z.string().default(''),
   /** Short text overlay in the target language; may be empty. */
   onScreenText: z.string().default(''),
-  /** Product is visible in frame: its photos are passed as references. */
+  /** Product is visible in frame (for an app: a phone showing it): its images are passed as references. */
   showsProduct: z.boolean().default(false),
+  /**
+   * Cut to a real screen recording of the app: `full` replaces the picture
+   * while the creator keeps talking, `pip` shows it in a box over the creator.
+   */
+  screen: z
+    .object({
+      recording: z.number().int().min(0),
+      start: z.number().min(0).default(0),
+      layout: z.enum(['full', 'pip']).default('pip'),
+    })
+    .nullable()
+    .default(null),
 })
 export type Scene = z.infer<typeof SceneSchema>
 
@@ -52,13 +64,17 @@ export const ScriptSchema = z.object({
 })
 export type Script = z.infer<typeof ScriptSchema>
 
-/** Clamps scene durations to what the video model accepts. */
-export function normalizeScript(script: Script, minDuration: number, maxDuration: number): Script {
+/** Clamps scene durations to what the video model accepts and drops references to recordings that don't exist. */
+export function normalizeScript(
+  script: Script,
+  opts: { minDuration: number; maxDuration: number; recordings: number },
+): Script {
   return {
     ...script,
     scenes: script.scenes.map((s) => ({
       ...s,
-      duration: Math.min(maxDuration, Math.max(minDuration, Math.round(s.duration))),
+      duration: Math.min(opts.maxDuration, Math.max(opts.minDuration, Math.round(s.duration))),
+      screen: s.screen && s.screen.recording < opts.recordings ? s.screen : null,
     })),
   }
 }

@@ -35,7 +35,8 @@ export async function keyframesStage({ run, gen, cfg, log }: Ctx): Promise<void>
   await mapLimit(todo, cfg.concurrency, async ({ s, i }) => {
     const scene = script.scenes[i]!
     const refs = [state.refs.persona!, ...(scene.showsProduct ? product : [])]
-    const image = await gen.image({ prompt: keyframePrompt(script, scene, product.length > 0), refs })
+    const prompt = keyframePrompt(script, scene, { type: state.brief.product.type, hasRefs: product.length > 0 })
+    const image = await gen.image({ prompt, refs })
     s.keyframe = await run.writeMedia(sceneName(i, 'png'), image)
     s.keyframeRef = await gen.upload(run.file(s.keyframe))
     await run.save()
@@ -49,13 +50,16 @@ export async function clipsStage({ run, gen, cfg, log }: Ctx): Promise<void> {
   const todo = state.scenes.map((s, i) => ({ s, i })).filter(({ s }) => !s.clip)
   if (!todo.length) return
 
-  log(`Видео: ${todo.length} клипов (это самый долгий шаг)`)
+  log(`Видео (${state.quality === 'final' ? 'финал' : 'черновик'}): ${todo.length} клипов — самый долгий шаг`)
   await mapLimit(todo, cfg.concurrency, async ({ s, i }) => {
     const scene = script.scenes[i]!
+    const speaking = cfg.audio === 'native'
     const video = await gen.video({
-      prompt: clipPrompt(scene, { speaking: cfg.audio === 'native', language: cfg.language }),
+      prompt: clipPrompt(scene, { speaking, language: cfg.language, voice: script.persona.voice }),
       firstFrame: s.keyframeRef!,
       duration: scene.duration,
+      quality: state.quality,
+      withAudio: speaking,
     })
     s.clip = await run.writeMedia(sceneName(i, 'mp4'), video)
     await run.save()

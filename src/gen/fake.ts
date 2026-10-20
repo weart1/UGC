@@ -7,17 +7,17 @@ import { ffmpeg } from '../ffmpeg.js'
 import type { Generator } from './types.js'
 
 const SCRIPT = {
-  title: 'Тестовый ролик',
+  title: 'Test video',
   persona: {
-    look: 'woman in her mid-20s, natural makeup, hair in a bun, grey t-shirt, bright bathroom',
-    voice: 'young woman, warm friendly voice, energetic, casual',
+    look: 'woman in her mid-20s, natural makeup, hair in a bun, grey t-shirt, bright living room',
+    voice: 'young woman, warm friendly voice, energetic, casual, American accent',
   },
   scenes: [
-    { purpose: 'hook', duration: 4, shot: 'selfie, close-up', visual: 'woman looks into camera, surprised', motion: 'leans to camera', line: 'Я три недели молчала, но теперь скажу', onScreenText: 'честный отзыв', showsProduct: false },
-    { purpose: 'problem', duration: 5, shot: 'selfie, medium', visual: 'woman touches her cheek', motion: 'turns face to light', line: 'Кожа была тусклая, никакой тональник не спасал', onScreenText: '', showsProduct: false },
-    { purpose: 'demo', duration: 5, shot: 'close-up of hands', visual: 'hands hold orange serum bottle', motion: 'drops serum on fingers', line: 'Утром три капли, и всё, больше ничего', onScreenText: '', showsProduct: true },
-    { purpose: 'result', duration: 5, shot: 'selfie, close-up', visual: 'woman smiles, glowing skin', motion: 'turns head slowly', line: 'Смотрите, какой тон, я просто в шоке', onScreenText: '', showsProduct: false },
-    { purpose: 'cta', duration: 4, shot: 'selfie, medium', visual: 'woman holds bottle next to face', motion: 'points down', line: 'Ссылка в профиле, по промокоду минус тридцать', onScreenText: '−30% GLOW30', showsProduct: true },
+    { purpose: 'hook', duration: 4, shot: 'selfie, close-up', visual: 'woman looks into camera, surprised', motion: 'leans to camera', line: "I can't believe nobody told me about this", onScreenText: 'wait for it', showsProduct: false, screen: null },
+    { purpose: 'problem', duration: 5, shot: 'selfie, medium', visual: 'woman sighs on the couch', motion: 'shrugs', line: 'I used to waste an hour every evening on this', onScreenText: '', showsProduct: false, screen: null },
+    { purpose: 'demo', duration: 5, shot: 'selfie, medium', visual: 'woman holds phone to camera', motion: 'taps the screen', line: 'Now I just open the app and it is done in a minute', onScreenText: '', showsProduct: true, screen: { recording: 0, start: 1, layout: 'full' } },
+    { purpose: 'result', duration: 5, shot: 'selfie, close-up', visual: 'woman smiles', motion: 'points at the screen', line: 'Look at this, honestly I am obsessed', onScreenText: '', showsProduct: false, screen: { recording: 0, start: 3, layout: 'pip' } },
+    { purpose: 'cta', duration: 4, shot: 'selfie, medium', visual: 'woman holds phone next to face', motion: 'points down', line: 'Link is in my bio, it is free to try', onScreenText: 'free trial', showsProduct: true, screen: null },
   ],
 }
 
@@ -42,8 +42,10 @@ export async function createFakeGenerator(cfg: Config): Promise<Generator> {
   const color = (s: string) => `0x${createHash('md5').update(s).digest('hex').slice(0, 6)}`
 
   return {
-    async text(kind) {
-      return '```json\n' + JSON.stringify(kind === 'script' ? SCRIPT : ANALYSIS) + '\n```'
+    async text(kind, prompt) {
+      const variant = prompt.match(/This is variant (\d+)/)?.[1]
+      const script = { ...SCRIPT, title: variant ? `${SCRIPT.title} #${variant}` : SCRIPT.title }
+      return '```json\n' + JSON.stringify(kind === 'script' ? script : ANALYSIS) + '\n```'
     },
     async caption() {
       return 'a person talking to a phone camera in a bathroom'
@@ -57,14 +59,15 @@ export async function createFakeGenerator(cfg: Config): Promise<Generator> {
       await ffmpeg(['-f', 'lavfi', '-i', `color=c=${color(prompt)}:s=${width}x${height}`, '-frames:v', '1', out])
       return readFile(out)
     },
-    async video({ firstFrame, duration }) {
+    async video({ firstFrame, duration, withAudio }) {
       const out = tmp('mp4')
-      const { width, height } = cfg.models.video
       await ffmpeg([
         '-loop', '1', '-i', firstFrame,
+        ...(withAudio ? ['-f', 'lavfi', '-i', `sine=frequency=330:duration=${duration}`] : []),
         '-t', String(duration),
-        '-vf', `scale=${width}:${height},format=yuv420p`,
+        '-vf', 'scale=720:1280,format=yuv420p',
         '-r', '24', '-c:v', 'libx264', '-preset', 'ultrafast',
+        ...(withAudio ? ['-c:a', 'aac'] : []),
         out,
       ])
       return readFile(out)

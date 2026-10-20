@@ -19,6 +19,7 @@ const scene = (over: Partial<Script['scenes'][number]> = {}) => ({
   line: 'привет как дела',
   onScreenText: '',
   showsProduct: false,
+  screen: null,
   ...over,
 })
 const script = (): Script => ({
@@ -27,7 +28,8 @@ const script = (): Script => ({
   scenes: [scene(), scene({ purpose: 'demo' }), scene({ purpose: 'cta' })],
 })
 const brief: Brief = {
-  product: { name: 'p', description: 'd', images: [] },
+  product: { name: 'p', description: 'd', type: 'app', images: [] },
+  screenRecordings: [],
   audience: 'a',
   goal: 'g',
   targetSeconds: 20,
@@ -60,7 +62,15 @@ describe('normalizeScript', () => {
     s.scenes[0]!.duration = 2
     s.scenes[1]!.duration = 7.6
     s.scenes[2]!.duration = 30
-    expect(normalizeScript(s, 4, 10).scenes.map((x) => x.duration)).toEqual([4, 8, 10])
+    expect(normalizeScript(s, { minDuration: 4, maxDuration: 10, recordings: 0 }).scenes.map((x) => x.duration)).toEqual([4, 8, 10])
+  })
+  it('drops references to recordings that do not exist', () => {
+    const s = script()
+    s.scenes[0]!.screen = { recording: 0, start: 0, layout: 'full' }
+    s.scenes[1]!.screen = { recording: 3, start: 0, layout: 'pip' }
+    const out = normalizeScript(s, { minDuration: 4, maxDuration: 10, recordings: 1 })
+    expect(out.scenes[0]!.screen).not.toBeNull()
+    expect(out.scenes[1]!.screen).toBeNull()
   })
 })
 
@@ -109,8 +119,15 @@ describe('subtitles', () => {
 
 describe('applyScriptEdit', () => {
   async function doneRun() {
-    const run = await Run.create(await mkdtemp(path.join(tmpdir(), 'ugc-test-')), brief)
+    const run = await Run.create(await mkdtemp(path.join(tmpdir(), 'ugc-test-')), {
+      id: '1',
+      projectId: 'p',
+      brief,
+      recordings: [],
+      variant: { index: 0, total: 1, avoid: [] },
+    })
     run.state.script = script()
+    run.state.approvals = { script: true, keyframes: true }
     run.state.persona = 'media/persona.png'
     run.state.refs = { persona: 'p', product: [] }
     run.state.scenes = [0, 1, 2].map((i) => ({ keyframe: `k${i}`, keyframeRef: `r${i}`, clip: `c${i}` }))
@@ -128,6 +145,18 @@ describe('applyScriptEdit', () => {
     expect(run.state.scenes.map((s) => Boolean(s.clip))).toEqual([true, false, true])
     expect(run.state.voice).toBeDefined()
     expect(run.state.final).toBeUndefined()
+    // New pictures need a fresh look before paying for video.
+    expect(run.state.approvals).toEqual({ script: true })
+  })
+
+  it('a screen-recording change only re-assembles', async () => {
+    const run = await doneRun()
+    const next = script()
+    next.scenes[1]!.screen = { recording: 0, start: 2, layout: 'full' }
+    applyScriptEdit(run, next)
+    expect(run.state.scenes.every((s) => s.keyframe && s.clip)).toBe(true)
+    expect(run.state.final).toBeUndefined()
+    expect(run.state.approvals.keyframes).toBe(true)
   })
 
   it('a line change redoes the clip and the voiceover, keeps the keyframe', async () => {

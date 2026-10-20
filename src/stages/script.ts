@@ -12,14 +12,12 @@ const SCRIPT_FILE = 'script.json'
  */
 export async function scriptStage({ run, gen, cfg, log }: Ctx): Promise<void> {
   const { minDuration, maxDuration } = cfg.models.video
+  const limits = { minDuration, maxDuration, recordings: run.state.recordings.length }
 
   if (run.state.script) {
     const edited = await readEdited(run)
     if (!edited) return
-    const script = normalizeScript(edited, minDuration, maxDuration)
-    applyScriptEdit(run, script)
-    await writeFile(run.file(SCRIPT_FILE), JSON.stringify(script, null, 2))
-    await run.save()
+    await saveScriptEdit(run, normalizeScript(edited, limits))
     log('script.json изменён вручную — перегенерирую затронутые сцены')
     return
   }
@@ -31,6 +29,8 @@ export async function scriptStage({ run, gen, cfg, log }: Ctx): Promise<void> {
     scriptPrompt({
       brief: run.state.brief,
       analysis: run.state.analysis,
+      recordings: run.state.recordings,
+      variant: run.state.variant,
       language: cfg.language,
       minDuration,
       maxDuration,
@@ -38,7 +38,7 @@ export async function scriptStage({ run, gen, cfg, log }: Ctx): Promise<void> {
     }),
     ScriptSchema,
   )
-  const script = normalizeScript(raw, minDuration, maxDuration)
+  const script = normalizeScript(raw, limits)
   run.state.script = script
   run.state.scenes = script.scenes.map(() => ({}))
   await writeFile(run.file(SCRIPT_FILE), JSON.stringify(script, null, 2))
@@ -60,7 +60,15 @@ async function readEdited(run: Run): Promise<Script | undefined> {
   return JSON.stringify(edited) === JSON.stringify(run.state.script) ? undefined : edited
 }
 
+/** Replaces the script with an edited one (from the file or the web panel) and saves both. */
+export async function saveScriptEdit(run: Run, script: Script): Promise<void> {
+  applyScriptEdit(run, script)
+  await writeFile(run.file(SCRIPT_FILE), JSON.stringify(script, null, 2))
+  await run.save()
+}
+
 const KEYFRAME_FIELDS: (keyof Scene)[] = ['visual', 'shot', 'showsProduct']
+// `screen` and `onScreenText` are applied at assembly, which every edit redoes anyway.
 const CLIP_FIELDS: (keyof Scene)[] = ['motion', 'duration', 'line']
 
 /** Replaces the script and invalidates exactly what the edit touches. */

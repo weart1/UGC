@@ -1,0 +1,28 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/data
+      # Edit the model config without rebuilding the image.
+      - ./ugc.config.json:/app/ugc.config.json:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  # HTTPS with an automatic certificate: set DOMAIN in .env and run
+  # `docker compose --profile https up -d`.
+  caddy:
+    image: caddy:2.8
+    profiles: ["https"]
+    restart: unless-stopped
+    env_file: .env
+    command: caddy reverse-proxy --from ${DOMAIN:-localhost} --to app:3000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy:/data
+
+volumes:
+  caddy:

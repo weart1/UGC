@@ -1,3 +1,5 @@
+import type { Quality } from '../config.js'
+
 /** Which prompt a text call answers; the fake generator uses it to pick a fixture. */
 export type TextKind = 'analysis' | 'script'
 
@@ -10,7 +12,7 @@ export interface Generator {
   caption(imagePath: string): Promise<string>
   upload(filePath: string): Promise<string>
   image(req: { prompt: string; refs: string[] }): Promise<Buffer>
-  video(req: { prompt: string; firstFrame: string; duration: number }): Promise<Buffer>
+  video(req: { prompt: string; firstFrame: string; duration: number; quality: Quality; withAudio: boolean }): Promise<Buffer>
   speech(req: { text: string; voice: string }): Promise<Buffer>
   /** USD spent so far in this process, as reported by the provider. */
   spentUsd(): number

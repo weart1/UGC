@@ -66,18 +66,19 @@ export async function createRunwareGenerator(cfg: Config): Promise<Generator> {
       return download(item.imageURL)
     },
 
-    async video({ prompt, firstFrame, duration }) {
+    async video({ prompt, firstFrame, duration, quality, withAudio }) {
+      const profile = m.video[quality]
       const item = await one(
         {
-          model: m.video.model,
+          model: profile.model,
           positivePrompt: prompt,
-          width: m.video.width,
-          height: m.video.height,
           duration,
           outputFormat: 'MP4',
+          // The aspect ratio follows the first frame, which is already 9:16.
           inputs: { frameImages: [{ image: firstFrame, frame: 'first' }] },
+          settings: { audio: withAudio },
         },
-        m.video.params,
+        profile.params,
         { timeout: VIDEO_TIMEOUT_MS },
       )
       return download(item.videoURL)

@@ -1,0 +1,16 @@
+{
+  "product": {
+    "name": "FocusFlow",
+    "type": "app",
+    "description": "Habit tracker that blocks distracting apps during focus sessions and turns streaks into a game. Free with a 7-day Pro trial.",
+    "images": [],
+    "price": "Free, Pro $4.99/month"
+  },
+  "screenRecordings": [],
+  "offer": "7-day free Pro trial",
+  "audience": "College students and young professionals in the US who struggle with phone addiction and procrastination",
+  "goal": "download the app from the link in bio",
+  "persona": "relatable student in their early 20s, dorm room or small apartment",
+  "targetSeconds": 25,
+  "notes": "Add app screenshots to images and screen recordings to screenRecordings (paths relative to this file)."
+}
