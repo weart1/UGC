@@ -1,0 +1,32 @@
+{
+  "name": "ugc-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Агент для автоматической генерации UGC-роликов: сценарий (LLM) → кадры (Nano Banana) → видео (Seedance) → сборка (ffmpeg)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "ugc": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@runware/sdk": "1.7.8",
+    "ajv": "^8.17.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

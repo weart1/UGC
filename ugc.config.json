@@ -1,0 +1,33 @@
+{
+  "language": "ru",
+  "audio": "tts",
+  "subtitles": true,
+  "concurrency": 2,
+  "validateParams": true,
+  "models": {
+    "llm": { "model": "google:gemini@3.5-flash", "params": {} },
+    "caption": { "model": "runware:152@2", "params": {} },
+    "image": {
+      "model": "google:4@2",
+      "width": 768,
+      "height": 1376,
+      "params": {}
+    },
+    "video": {
+      "model": "bytedance:seedance@2.5",
+      "width": 704,
+      "height": 1248,
+      "minDuration": 4,
+      "maxDuration": 10,
+      "params": {}
+    },
+    "tts": { "model": "alibaba:qwen@3-tts-1.7b-voicedesign", "params": {} }
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "font": "DejaVu Sans",
+    "musicVolume": 0.12
+  }
+}
